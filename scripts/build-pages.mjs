@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
-import { writeFile, mkdir, copyFile } from 'node:fs/promises';
-import { randomBytes, pbkdf2Sync, createCipheriv } from 'node:crypto';
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { randomBytes, pbkdf2Sync, createCipheriv, createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -24,6 +24,7 @@ const bundle = await build({
 });
 const javascript = bundle.outputFiles.find(file => file.path.endsWith('.js')).contents;
 const css = bundle.outputFiles.find(file => file.path.endsWith('.css')).contents;
+const revision = createHash('sha256').update(javascript).update(css).digest('hex').slice(0, 12);
 const salt = randomBytes(16);
 const iv = randomBytes(12);
 const key = pbkdf2Sync(password, salt, 310000, 32, 'sha256');
@@ -33,8 +34,10 @@ await mkdir(path.join(output, 'reference'), { recursive: true });
 await mkdir(path.join(output, 'vendor'), { recursive: true });
 await writeFile(path.join(output, 'game.enc'), Buffer.concat([Buffer.from('MB01'), salt, iv, encrypted]));
 await writeFile(path.join(output, 'styles.css'), css);
-await copyFile(path.join(root, 'src/index.html'), path.join(output, 'index.html'));
-await copyFile(path.join(root, 'src/unlock.js'), path.join(output, 'unlock.js'));
+const html = (await readFile(path.join(root, 'src/index.html'), 'utf8')).replace('./styles.css', `./styles.css?v=${revision}`).replace('./unlock.js', `./unlock.js?v=${revision}`);
+const unlock = (await readFile(path.join(root, 'src/unlock.js'), 'utf8')).replace("'./game.enc'", `'./game.enc?v=${revision}'`);
+await writeFile(path.join(output, 'index.html'), html);
+await writeFile(path.join(output, 'unlock.js'), unlock);
 for (const asset of ['reference/minam-facade.webp', 'vendor/THREE-LICENSE.txt', 'favicon.svg', 'robots.txt']) {
   await copyFile(path.join(root, 'public', asset), path.join(output, asset));
 }
