@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#edf1f2">
+  <meta name="description" content="오늘의 스트레스를 시원하게 부수는 작은 3D 게임.">
+  <title>MINAM BREAK · 너만의 작은 해방구</title>
+  <link rel="icon" href="./favicon.svg">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./unlock.js"></script>
+</head>
+<body>
+  <div id="root">
+    <main class="entry">
+      <header class="entry-header"><a href="./" class="wordmark">MINAM<span>BREAK</span><i></i></a><span class="edition">A LITTLE BREAK, JUST FOR YOU</span></header>
+      <div class="entry-orbit orbit-one"></div><div class="entry-orbit orbit-two"></div>
+      <section class="entry-content">
+        <span class="eyebrow"><span class="status-dot"></span> ONLY FOR YOU</span>
+        <h1>오늘도,<br>정말 수고했어<span class="coral">.</span></h1>
+        <p class="entry-copy">꾹 참았던 마음은 잠깐 내려놓고.<br>오늘의 스트레스, 여기서 시원하게 부숴 버려.</p>
+        <form class="entry-form">
+          <label for="password"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4M12 14v3"/></svg> 우리만 아는 비밀번호</label>
+          <div class="password-row">
+            <input id="password" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="current-password" placeholder="네 자리 숫자" aria-describedby="login-error">
+            <button type="submit" aria-label="입장하기"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+          </div>
+          <p id="login-error" class="login-error" role="status" aria-live="polite">&nbsp;</p>
+        </form>
+        <div class="entry-note">♡ 너를 위한 공간이야. 마음껏 즐겨.</div>
+        <noscript><p>게임을 열려면 브라우저의 JavaScript를 켜 주세요.</p></noscript>
+      </section>
+      <div class="entry-bottom"><span>TAKE A BREATH. MAKE A BREAK.</span><span>MADE WITH ♥</span></div>
+      <div class="entry-backdrop" aria-hidden="true">BREAK.</div>
+    </main>
+  </div>
+</body>
+</html>
