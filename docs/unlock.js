@@ -12,7 +12,7 @@ form.addEventListener('submit', async (event) => {
   let stage = 'download';
   let moduleUrl;
   try {
-    const response = await fetch('./game.enc?v=9bba1a051da0');
+    const response = await fetch('./game.enc?v=045ab10be8fd');
     if (!response.ok) throw new Error('Download failed');
     const payload = new Uint8Array(await response.arrayBuffer());
     if (new TextDecoder().decode(payload.slice(0, 4)) !== 'MB01') throw new Error('Invalid payload');

@@ -38,7 +38,7 @@ const html = (await readFile(path.join(root, 'src/index.html'), 'utf8')).replace
 const unlock = (await readFile(path.join(root, 'src/unlock.js'), 'utf8')).replace("'./game.enc'", `'./game.enc?v=${revision}'`);
 await writeFile(path.join(output, 'index.html'), html);
 await writeFile(path.join(output, 'unlock.js'), unlock);
-for (const asset of ['reference/minam-facade.webp', 'vendor/THREE-LICENSE.txt', 'favicon.svg', 'robots.txt']) {
+for (const asset of ['reference/minam-facade.webp', 'vendor/THREE-LICENSE.txt', 'vendor/CANNON-ES-LICENSE.txt', 'favicon.svg', 'robots.txt']) {
   await copyFile(path.join(root, 'public', asset), path.join(output, asset));
 }
 await writeFile(path.join(output, '.nojekyll'), '');

@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.js';
+import {FLOOR_COUNT, FLOOR_HEIGHT} from './hospital-plan.mjs';
 
 // Facade control points were measured against the full exterior photograph
 // published in the hospital's official floor guide. Geometry uses photo ratios;
@@ -7,7 +8,7 @@ export async function buildHospital({add,mat,texture,materials,textureResources,
   const photo=await new T.TextureLoader().loadAsync(new URL('reference/minam-facade.webp',document.baseURI).href);
   photo.colorSpace=T.SRGBColorSpace;photo.anisotropy=renderer.capabilities.getMaxAnisotropy();textureResources.push(photo);
   const {white,glass,darkGlass,metal,inner,gray,roof}=materials;
-  const floorH=3.3, podium=13.2, top=42.9;
+  const floorH=FLOOR_HEIGHT, podium=13.2, top=42.9;
   const sideStone=mat({color:'#a3adb1',roughness:.88});
   // Map a unit-square face onto a perspective quadrilateral in the source photo.
   function homography(corners){
@@ -65,9 +66,11 @@ export async function buildHospital({add,mat,texture,materials,textureResources,
   // Recessed rear wing visible on the left of the official street photograph.
   for(let r=0;r<19;r++)for(let c=0;c<4;c++)add([.2,1.64,.995],[-8.65,1.65*r+.825,-6.5-c],white,Math.floor(r/2));
   for(let r=0;r<19;r++)for(let c=0;c<18;c++)add([.995,1.64,.2],[-8.1+c,1.65*r+.825,-10],r%2&&c%4===1?glass:white,Math.floor(r/2));
-  // Twelve occupied levels and the thirteenth-floor rooftop garden.
-  for(let f=0;f<=13;f++)for(let ix=0;ix<7;ix++)for(let iz=0;iz<4;iz++)add([2.82,.17,2.7],[-8.55+ix*2.84,.08+f*floorH,-4.5+iz*2.7],f===13?roof:inner,f);
-  for(let f=0;f<13;f++)for(let x of [-8,0,8])for(let z of [-4.4,4.4])add([.35,3.12,.35],[x,1.73+f*floorH,z],inner,f);
+  // Eighteen playable floors inside the original exterior proportions.
+  for(let f=0;f<=FLOOR_COUNT;f++)for(let ix=0;ix<8;ix++)for(let iz=0;iz<5;iz++)
+    add([2.49,.17,2.39],[-8.75+ix*2.5,.08+f*floorH,-4.8+iz*2.4],f===FLOOR_COUNT?roof:inner,f,0,{kind:'slab'});
+  for(let f=0;f<FLOOR_COUNT;f++)for(let x of [-8,0,8])for(let z of [-4.4,4.4])
+    add([.38,floorH-.17,.38],[x,.165+(floorH-.17)/2+f*floorH,z],inner,f,0,{kind:'column'});
   // Capped parapets track the three staggered wall planes.
   for(let x=-9.5;x<10;x++){const y=x< -2?43:x<6?44.1:42.8;add([.997,.12,.38],[x,y,x<-2?6:x<6?5.62:5.28],white,13);}
   for(let z=-5.5;z<6;z++)add([.25,.15,.995],[-10,43.0,z],white,13);

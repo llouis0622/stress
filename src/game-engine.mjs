@@ -5,6 +5,11 @@ import {createEarthView} from './earth-view.mjs';
 import {createFragments} from './fragments.mjs';
 import {TOOL_BY_ID} from './tools.mjs';
 import {panelParts} from './fracture.mjs';
+import {buildInterior} from './hospital-interior.mjs';
+import {createPeople} from './hospital-people.mjs';
+import {createStructure} from './structure.mjs';
+import {createRigidDebris} from './rigid-debris.mjs';
+import {FLOOR_HEIGHT, floorAt, visiblePiece} from './hospital-plan.mjs';
 
 export async function createGame(mount, onChange) {
   const mobile = matchMedia('(max-width: 700px)').matches;
@@ -13,6 +18,7 @@ export async function createGame(mount, onChange) {
   renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.3:1.8));
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
   renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=.95;
+  renderer.localClippingEnabled=true;
   mount.appendChild(renderer.domElement);
   const scene=new T.Scene();scene.background=new T.Color('#c9dbe5');scene.fog=new T.Fog('#c9dbe5',100,240);
   const camera=new T.PerspectiveCamera(38,1,.1,350);
@@ -36,31 +42,38 @@ export async function createGame(mount, onChange) {
   const building = new T.Group(); scene.add(building);
   const pools = new Map();
   const lastAim = new T.Vector3(0, 0, 0);
-  let viewDepth = -1, following = true, lastAttack = -10000;
-  function add(s, position, material, floor = 0, rotation = 0, parent = null) {
+  let viewDepth = -1, following = true, lastAttack = -10000, cutaway=false, selectedFloor=-1;
+  const ceiling=new T.Plane(new T.Vector3(0,-1,0),1000);
+  function add(s, position, material, floor = 0, rotation = 0, options = {}) {
+    const parent=options.parent||null, kind=parent?.kind||options.kind||'shell';
     let pool = pools.get(material);
     if (!pool) { pool = { material, items: [] }; pools.set(material, pool); }
     const q = new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), rotation);
-    const p = { s: new T.Vector3(...s), home: new T.Vector3(...position), q, inverse: q.clone().invert(), floor, parent, children: null, state: parent ? 1 : 0, mass: parent ? parent.mass / 4 : 1, index: pool.items.length, pool };
+    const p = { s: new T.Vector3(...s), home: new T.Vector3(...position), q, inverse: q.clone().invert(), floor:parent?parent.floor:kind==='slab'?floor:floorAt(position[1]), kind, parent, children: null, state: parent ? 1 : 0, mass: parent ? parent.mass / 4 : kind==='furniture'?.15:1, index: pool.items.length, pool, debris:null };
     pool.items.push(p); pieces.push(p); return p;
   }
   try { await Promise.race([document.fonts.load('800 64px "Noto Sans KR"'), new Promise(resolve => setTimeout(resolve, 1800))]); } catch {}
   await buildHospital({ add, mat, texture, materials: { white, gray, glass, darkGlass, metal, inner, roof }, textureResources, renderer });
-  const total = pieces.length;
+  buildInterior({add,mat,texture});
+  const roots=[...pieces], total=roots.reduce((sum,p)=>sum+p.mass,0);
+  const structure=createStructure(roots,earth);
   const live = p => p.state === 0 && (!p.parent || p.parent.state === 2);
   function writePiece(p) {
-    dummy.position.copy(p.home); dummy.quaternion.copy(p.q); dummy.scale.copy(p.s);
-    if (!live(p)) dummy.scale.setScalar(0);
+    dummy.position.copy(p.debris?.position||p.home); dummy.quaternion.copy(p.debris?.quaternion||p.q); dummy.scale.copy(p.s).multiplyScalar(p.debris?.scale??1);
+    if ((!live(p)&&!p.debris)||!visiblePiece(p,cutaway,selectedFloor)) dummy.scale.setScalar(0);
     dummy.updateMatrix(); p.pool.mesh.setMatrixAt(p.index, dummy.matrix);
+    p.pool.mesh.boundingSphere=null;
     p.pool.mesh.instanceMatrix.needsUpdate = true;
     const photo = p.pool.material.userData.photo;
-    if (photo) {
+    if (photo&&!p.photoWritten) {
       const { axis, range } = photo, a = axis === 'x' ? p.home.x : p.home.z, size = axis === 'x' ? p.s.x : p.s.z;
       p.pool.rect.setXYZW(p.index, (a - size / 2 - range[0]) / (range[1] - range[0]), (p.home.y - p.s.y / 2 - range[2]) / (range[3] - range[2]), size / (range[1] - range[0]), p.s.y / (range[3] - range[2]));
       p.pool.rect.needsUpdate = true;
+      p.photoWritten=true;
     }
   }
   for (const pool of pools.values()) {
+    pool.material.clippingPlanes=[ceiling];pool.material.clipShadows=true;
     const capacity = pool.items.length * 5;
     const g = pool.material.userData.photo ? geometry.clone() : geometry;
     if (pool.material.userData.photo) { pool.rect = new T.InstancedBufferAttribute(new Float32Array(capacity * 4), 4); g.setAttribute('photoRect', pool.rect); }
@@ -68,6 +81,9 @@ export async function createGame(mount, onChange) {
     pool.mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); pool.mesh.castShadow = true; pool.mesh.receiveShadow = true; pool.mesh.frustumCulled = false;
     pool.mesh.userData.pool = pool; groups.push(pool.mesh); building.add(pool.mesh); pool.items.forEach(writePiece);
   }
+  const physics=createRigidDebris(earth,writePiece,mobile);
+  physics.syncStructure(pieces,live);
+  const people=createPeople(scene);
   function record(tx, p) { if (!tx.before.has(p)) tx.before.set(p, p.state); }
   function split(tx, p) {
     if (p.parent) return null;
@@ -76,7 +92,7 @@ export async function createGame(mount, onChange) {
     if (!p.children) {
       p.children = [];
       for (const {size, position} of parts) {
-        const child = add(size.toArray(), position.toArray(), p.pool.material, p.floor, 0, p);
+        const child = add(size.toArray(), position.toArray(), p.pool.material, p.floor, 0, {parent:p});
         child.q.copy(p.q); child.inverse.copy(p.inverse); p.children.push(child);
       }
       p.pool.mesh.count = p.pool.items.length;
@@ -93,6 +109,7 @@ export async function createGame(mount, onChange) {
   }
   function breakPiece(tx, p, spec) {
     record(tx, p); p.state = 1; broken += p.mass; writePiece(p);
+    tx.detached.push(p);
     if (tx.particles++ < 24) fragments.spawn(p.home, p.pool.material.color, spec.radius + 5, spec.id === 'blackhole' ? tx.center : null, mobile ? 7 : 12);
   }
   const vfx = [];
@@ -133,16 +150,22 @@ export async function createGame(mount, onChange) {
   }
   function publish() {
     const depth = earth.deepest;
-    onChange({ percent: Math.min(100, Math.floor(broken / total * 100 + 1e-6)), hits, combo, score, finished: earth.through, canUndo: history.length > 0 || !!pending, depth: travelKm(depth), viewDepth: Math.max(0, viewDepth), maxDepth: Math.max(0, depth - CELL), layer: layerAt(Math.max(0, viewDepth)).name, underground: viewDepth >= 0, earthPercent: Math.round(earth.count / earth.total * 1000) / 10, earthBlocks: earth.count, journey: Math.round(depth / WORLD_DEPTH * 100), pending: !!pending });
+    onChange({ percent: Math.min(100, Math.floor(broken / total * 100 + 1e-6)), hits, combo, score, finished: earth.through, canUndo: history.length > 0 || !!pending, depth: travelKm(depth), viewDepth: Math.max(0, viewDepth), maxDepth: Math.max(0, depth - CELL), layer: layerAt(Math.max(0, viewDepth)).name, underground: viewDepth >= 0, earthPercent: Math.round(earth.count / earth.total * 1000) / 10, earthBlocks: earth.count, journey: Math.round(depth / WORLD_DEPTH * 100), pending: !!pending, cutaway, selectedFloor, people:people.total, evacuated:people.evacuated, evacuating:people.evacuating });
   }
-  function refreshWorld() { terrain.refresh(Math.max(0, viewDepth)); building.visible = viewDepth < 0; }
+  function refreshWorld() { terrain.refresh(Math.max(0, viewDepth)); building.visible = viewDepth < 0; people.view(viewDepth<0,cutaway?selectedFloor:-1); }
   function focusDig() { viewDepth = Math.max(0, earth.deepest - CELL * 2); following = true; el = 1.1; distance = mobile ? 150 : 115; refreshWorld(); publish(); }
   function setDepth(depth) { viewDepth = T.MathUtils.clamp(depth, 0, Math.max(0, earth.deepest - CELL)); following = false; el = 1.1; refreshWorld(); publish(); }
-  function surface() { viewDepth = -1; el = .16; az = -1; resize(); refreshWorld(); publish(); }
+  function surface() { viewDepth = -1; el = cutaway?.35:.16; az = -1; resize(); refreshWorld(); publish(); }
+  function setInterior(value) {
+    cutaway=value;ceiling.constant=cutaway&&selectedFloor>=0?(selectedFloor+1)*FLOOR_HEIGHT-.12:1000;
+    pieces.forEach(writePiece);surface();
+  }
+  function setFloor(value) {selectedFloor=Math.max(-1,Math.min(17,Math.round(value)));setInterior(true);}
   function applyHit(point, spec) {
     const now = performance.now();
     const center = point.clone(); center.y -= spec.offset || 0;
-    const tx = { before: new Map(), terrain: [], particles: 0, center, hits, broken, score, combo, lastAim: lastAim.clone() };
+    const tx = { before: new Map(), terrain: [], detached:[], particles: 0, center, hits, broken, score, combo, lastAim: lastAim.clone(), physics:physics.snapshot(), people:people.snapshot() };
+    const moved=physics.blast(center,spec);
     const candidates = pieces.filter(p => live(p) && Math.abs(p.home.y - center.y) <= spec.radius * spec.vertical + p.s.y / 2 && intersects(p, center, spec.radius, spec.vertical));
     for (const p of candidates) {
       const children = split(tx, p);
@@ -150,7 +173,14 @@ export async function createGame(mount, onChange) {
       else breakPiece(tx, p, spec);
     }
     tx.terrain = earth.carve(center, spec.radius, spec.vertical);
-    if (!tx.before.size && !tx.terrain.length) return;
+    const directlyHit=tx.detached.length;
+    for(const p of structure.unsupported(live)) breakPiece(tx,p,spec);
+    if (!tx.before.size && !tx.terrain.length&&!moved) return;
+    people.evacuate();
+    physics.syncStructure(pieces,live);
+    if(tx.terrain.length) physics.refreshGround();
+    physics.spawn(tx.detached.slice(0,directlyHit),center,spec);
+    physics.spawn(tx.detached.slice(directlyHit),center,spec,true);
     for (let i = 0; i < tx.terrain.length; i += Math.max(1, Math.ceil(tx.terrain.length / 22))) {
       const p = earth.center(tx.terrain[i]); fragments.spawn(new T.Vector3(p.x, p.y, p.z), layerAt(-p.y).color, spec.radius + 5, spec.id === 'blackhole' ? center : null, mobile ? 6 : 10);
     }
@@ -162,7 +192,6 @@ export async function createGame(mount, onChange) {
     shake = reduced ? 0 : Math.min(.45, spec.radius * .03); impactAudio(spec.radius);
     if (navigator.vibrate) navigator.vibrate(10);
     if (viewDepth >= 0 && following) viewDepth = Math.max(viewDepth, Math.max(0, earth.deepest - CELL * 2));
-    if (broken >= total - .001 && viewDepth < 0) focusDig();
     refreshWorld(); publish();
   }
   function attack(point) {
@@ -175,21 +204,24 @@ export async function createGame(mount, onChange) {
     if (pending) { pending = null; clearVfx(); publish(); return; }
     const tx = history.pop(); if (!tx) return;
     for (const [p, state] of tx.before) p.state = state;
-    for (const p of tx.before.keys()) writePiece(p);
     earth.restore(tx.terrain); hits = tx.hits; broken = tx.broken; score = tx.score; combo = tx.combo; lastAim.copy(tx.lastAim); lastAttack = lastHit = -10000;
+    physics.restore(tx.physics);physics.refreshGround();physics.syncStructure(pieces,live);people.restore(tx.people);
+    pieces.forEach(writePiece);
     if (viewDepth >= 0) viewDepth = Math.min(viewDepth, Math.max(0, earth.deepest - CELL));
     clearVfx(); fragments.clear(); refreshWorld(); publish();
   }
   function at(x, y) {
     const rect = mount.getBoundingClientRect(); mouse.set((x - rect.left) / rect.width * 2 - 1, -(y - rect.top) / rect.height * 2 + 1); ray.setFromCamera(mouse, camera);
-    const buildingHit = building.visible ? ray.intersectObjects(groups, false).find(hit => live(hit.object.userData.pool.items[hit.instanceId])) : null;
+    const buildingHit = building.visible ? ray.intersectObjects(groups, false).find(hit => {
+      const p=hit.object.userData.pool.items[hit.instanceId];return (live(p)||p.debris)&&visiblePiece(p,cutaway,selectedFloor)&&hit.point.y<=ceiling.constant;
+    }) : null;
     const earthHit = terrain.raycast(ray.ray);
     if (buildingHit && (!earthHit || buildingHit.distance < earthHit.distance)) attack(buildingHit.point);
     else if (earthHit) attack(new T.Vector3(earthHit.point.x, earthHit.point.y, earthHit.point.z));
   }
   const goal = new T.Vector3();
   function updateCamera() {
-    goal.set(viewDepth < 0 ? 0 : lastAim.x, viewDepth < 0 ? 21 : -viewDepth, viewDepth < 0 ? 0 : lastAim.z); target.lerp(goal, reduced ? 1 : .16);
+    goal.set(viewDepth < 0 ? 0 : lastAim.x, viewDepth < 0 ? (cutaway&&selectedFloor>=0?selectedFloor*FLOOR_HEIGHT+1:21) : -viewDepth, viewDepth < 0 ? 0 : lastAim.z); target.lerp(goal, reduced ? 1 : .16);
     const c = Math.cos(el); camera.position.set(target.x + Math.sin(az) * distance * c, target.y + Math.sin(el) * distance, target.z + Math.cos(az) * distance * c);
     if (shake) { camera.position.x += random(-shake, shake); camera.position.y += random(-shake, shake); }
     camera.lookAt(target); sun.position.set(target.x - 35, target.y + 65, target.z + 42); sun.target.position.copy(target); fill.position.set(target.x + 25, target.y + 20, target.z - 30);
@@ -197,10 +229,15 @@ export async function createGame(mount, onChange) {
     scene.background.set(underground ? '#272835' : '#c9dbe5'); scene.fog.color.copy(scene.background);
   }
   function resize() {
-    const { width, height } = mount.getBoundingClientRect(); renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix();
+    const { width, height } = mount.getBoundingClientRect(); renderer.setSize(width, height); camera.aspect = width / height;
+    const header=mount.parentElement.querySelector('.game-header')?.getBoundingClientRect().height||64;
+    const dock=mount.parentElement.querySelector('.bottom-area')?.getBoundingClientRect().height||180;
+    const tabs=mount.parentElement.querySelector('.mobile-panels')?.getBoundingClientRect().height||0;
+    camera.setViewOffset(width,height,0,(dock-header-tabs)/2,width,height);
+    camera.updateProjectionMatrix();
     if (viewDepth >= 0) distance = width < 700 ? 150 : 115;
-    else if (width < 700) distance = Math.max(44 / (2 * Math.tan(19 * Math.PI / 180)) * (height / Math.max(230, height - 390)), 28 / (2 * Math.tan(19 * Math.PI / 180) * (width / height) * .85));
-    else distance = 104;
+    else if(cutaway&&selectedFloor>=0) distance=width<700?70:48;
+    else distance=Math.max(width<700?28/(2*Math.tan(19*Math.PI/180)*(width/height)*.9):83,48/(2*Math.tan(19*Math.PI/180))*height/Math.max(100,height-header-tabs-dock-36));
     updateCamera();
   }
   const ro = new ResizeObserver(resize); ro.observe(mount); resize();
@@ -241,25 +278,26 @@ export async function createGame(mount, onChange) {
       else e.mesh.material.opacity = (1 - t) * .8;
       if (t >= 1) { scene.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose(); vfx.splice(i, 1); }
     }
+    physics.step(dt);if(people.step(dt)) publish();
     fragments.step(dt); shake *= .8; if (shake < .002) shake = 0;
     updateCamera(); renderer.render(scene, camera);
   }
   publish(); raf = requestAnimationFrame(frame);
   return {
     setTool(t) { if (TOOL_BY_ID[t]) tool = t; }, setSound(v) { sound = v; if (!v && audio) audio.suspend(); }, setOrbit(v) { orbit = v; down = null; },
-    zoom(v) { distance = T.MathUtils.clamp(distance + v, 32, 260); }, home() { az = -1; el = viewDepth < 0 ? .16 : 1.1; resize(); },
-    centerHit() { const r = mount.getBoundingClientRect(); at(r.left + r.width / 2, r.top + r.height / 2); },
-    focusDig, setDepth, surface, undo,
+    zoom(v) { distance = T.MathUtils.clamp(distance + v, 32, 260); }, home() { az = -1; el = viewDepth < 0 ? (cutaway?.35:.16) : 1.1; resize(); },
+    centerHit() { const r = mount.parentElement.querySelector('.play-overlay').getBoundingClientRect(); at(r.left + r.width / 2, r.top + r.height / 2); },
+    focusDig, setDepth, surface, undo, setInterior, setFloor,
     reset() {
-      history = []; pending = null; clearVfx(); fragments.clear(); earth.reset(); broken = hits = combo = score = 0; lastHit = lastAttack = -10000; down = null; lastAim.set(0, 0, 0); following = true;
+      history = []; pending = null; clearVfx(); fragments.clear();physics.clear();people.reset(); earth.reset(); broken = hits = combo = score = 0; lastHit = lastAttack = -10000; down = null; lastAim.set(0, 0, 0); following = true;
       for (const p of pieces) p.state = p.parent ? 1 : 0;
-      pieces.forEach(writePiece); surface();
+      physics.refreshGround();physics.syncStructure(pieces,live);pieces.forEach(writePiece);surface();
     },
     dispose() {
       disposed = true; cancelAnimationFrame(raf); clearVfx(); ro.disconnect();
       window.removeEventListener('blur', clearInput); document.removeEventListener('visibilitychange', clearInput);
       renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointermove', pointerMove); renderer.domElement.removeEventListener('pointerup', pointerUp); renderer.domElement.removeEventListener('pointercancel', clearInput); renderer.domElement.removeEventListener('wheel', wheel); renderer.domElement.removeEventListener('webglcontextlost', contextLost);
-      if (audio) audio.close(); terrain.dispose(); fragments.dispose();
+      if (audio) audio.close(); terrain.dispose(); fragments.dispose();physics.dispose();people.dispose();
       for (const pool of pools.values()) if (pool.mesh.geometry !== geometry) pool.mesh.geometry.dispose();
       geometry.dispose(); materialResources.forEach(m => m.dispose()); textureResources.forEach(t => t.dispose()); environment.dispose(); renderer.dispose(); renderer.domElement.remove();
     },
