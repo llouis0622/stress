@@ -26,7 +26,7 @@ export async function createGame(mount, onChange) {
   const sun=new T.DirectionalLight('#fff5e4',2.3);sun.position.set(-35,65,42);sun.castShadow=true;sun.shadow.mapSize.set(mobile?1024:2048,mobile?1024:2048);Object.assign(sun.shadow.camera,{left:-35,right:35,top:45,bottom:-35,near:1,far:150});sun.shadow.normalBias=.04;sun.shadow.bias=-.00005;sun.shadow.radius=3;sun.target.position.set(0,12,0);scene.add(sun,sun.target);
   const fill=new T.DirectionalLight('#bfd7ed',.8);fill.position.set(25,20,-30);scene.add(fill);
   const mat=(opts)=>{const m=new T.MeshStandardMaterial(opts);materialResources.push(m);return m;};
-  const white=mat({map:wallTexture,roughness:.86,color:'#f3f2ec'}),gray=mat({color:'#9ea9aa',roughness:.75}),glass=mat({color:'#7d9aa3',metalness:.65,roughness:.17,envMapIntensity:1.3}),darkGlass=mat({color:'#4f6874',metalness:.65,roughness:.21}),metal=mat({color:'#bbc6c7',metalness:.7,roughness:.3}),inner=mat({color:'#bbb9ad',roughness:.92}),roof=mat({color:'#9aaca0',roughness:.9}),blue=mat({color:'#203e88',roughness:.45,metalness:.15});
+  const white=mat({map:wallTexture,roughness:.86,color:'#f3f2ec'}),gray=mat({color:'#9ea9aa',roughness:.75}),glass=mat({color:'#7d9aa3',metalness:.65,roughness:.17,envMapIntensity:1.3}),darkGlass=mat({color:'#4f6874',metalness:.65,roughness:.21}),metal=mat({color:'#bbc6c7',metalness:.7,roughness:.3}),inner=mat({color:'#bbb9ad',roughness:.92}),roof=mat({color:'#9aaca0',roughness:.9});
   const ground=new T.Mesh(new T.PlaneGeometry(450,450),mat({map:asphalt,roughness:1,color:'#bec4bd'}));ground.rotation.x=-Math.PI/2;ground.position.y=-.22;ground.receiveShadow=true;scene.add(ground);
   function fixedBox(s,p,m){const mesh=new T.Mesh(geometry,m);mesh.scale.set(...s);mesh.position.set(...p);mesh.receiveShadow=true;mesh.castShadow=true;scene.add(mesh);return mesh;}
   fixedBox([29,.22,23],[0,-.11,0],mat({color:'#c4c8c3',roughness:.92}));
@@ -37,7 +37,7 @@ export async function createGame(mount, onChange) {
   const pools=new Map();
   function add(s,p,m,floor=Math.floor(p[1]/3),rotation=0){let pool=pools.get(m);if(!pool){pool={material:m,items:[]};pools.set(m,pool);}const item={s:new T.Vector3(...s),p:new T.Vector3(...p),home:new T.Vector3(...p),q:new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),rotation),originalQ:null,v:new T.Vector3(),w:new T.Vector3(),floor,broken:false,active:false,age:0,index:pool.items.length,pool};item.originalQ=item.q.clone();pool.items.push(item);pieces.push(item);return item;}
   try{await Promise.race([document.fonts.load('800 64px "Noto Sans KR"'),new Promise(resolve=>setTimeout(resolve,1800))]);}catch{}
-  await buildHospital({add,mat,texture,materials:{white,gray,glass,darkGlass,metal,inner,roof,blue},textureResources,renderer});
+  await buildHospital({add,mat,texture,materials:{white,gray,glass,darkGlass,metal,inner,roof},textureResources,renderer});
   for(const pool of pools.values()){
     const g=pool.material.userData.photo?geometry.clone():geometry;
     if(pool.material.userData.photo){const {axis,range}=pool.material.userData.photo,rects=new Float32Array(pool.items.length*4);pool.items.forEach((p,i)=>{const a=axis==='x'?p.home.x:p.home.z,sz=axis==='x'?p.s.x:p.s.z;rects.set([(a-sz/2-range[0])/(range[1]-range[0]),(p.home.y-p.s.y/2-range[2])/(range[3]-range[2]),sz/(range[1]-range[0]),p.s.y/(range[3]-range[2])],i*4);});g.setAttribute('photoRect',new T.InstancedBufferAttribute(rects,4));}

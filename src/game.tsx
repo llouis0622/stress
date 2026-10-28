@@ -1,34 +1,32 @@
-'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Hammer, Zap, RotateCcw, Volume2, VolumeX, LockKeyhole, Move, Crosshair, Minus, Plus, Heart, X, CircleHelp, Maximize2, LoaderCircle, Flame, Activity, Undo2 } from 'lucide-react';
 type Stats={percent:number;hits:number;combo:number;finished:boolean;score:number;canUndo?:boolean};
 type Engine={setTool:(t:string)=>void;undo:()=>void;reset:()=>void;home:()=>void;zoom:(n:number)=>void;setSound:(v:boolean)=>void;setOrbit:(v:boolean)=>void;centerHit:()=>void;dispose:()=>void};
-export default function Game({staticMode=false}:{staticMode?:boolean}){
+export default function Game(){
   const mount=useRef<HTMLDivElement>(null),engine=useRef<Engine|null>(null);
   const [ready,setReady]=useState(false),[error,setError]=useState(''),[tool,setTool]=useState('hammer'),[sound,setSound]=useState(true),[orbit,setOrbit]=useState(false),[help,setHelp]=useState(false),[showFinish,setShowFinish]=useState(true);
   const [stats,setStats]=useState<Stats>({percent:0,hits:0,combo:0,finished:false,score:0});
   useEffect(()=>{
     let cancelled=false;
     (async()=>{try{
-      const mod=await import('@/lib/game-engine.mjs');
+      const mod=await import('./game-engine.mjs');
       if(cancelled||!mount.current)return;
       engine.current=await mod.createGame(mount.current,(s:Stats)=>setStats(s));
       if(cancelled){engine.current?.dispose();return;}setReady(true);
     }catch(e){console.error(e);setError('3D 화면을 열지 못했어요. 최신 Safari 또는 Chrome에서 다시 열어 주세요.');}})();
-    const check=async()=>{if(document.hidden)return;try{const r=await fetch('/api/session');if(r.status===401)window.location.replace('/');}catch{}};
     const gameError=()=>setError('3D 화면 연결이 끊겼어요. 다시 열면 처음부터 즐길 수 있어요.');mount.current?.addEventListener('game-error',gameError);
-    const gameMount=mount.current; const timer=staticMode?undefined:setInterval(check,60000);if(!staticMode)document.addEventListener('visibilitychange',check);
-    return()=>{gameMount?.removeEventListener('game-error',gameError);cancelled=true;engine.current?.dispose();engine.current=null;clearInterval(timer);document.removeEventListener('visibilitychange',check);};
-  },[staticMode]);
+    const gameMount=mount.current;
+    return()=>{gameMount?.removeEventListener('game-error',gameError);cancelled=true;engine.current?.dispose();engine.current=null;};
+  },[]);
   function choose(t:string){setTool(t);setOrbit(false);engine.current?.setOrbit(false);engine.current?.setTool(t);}
   const toolOptions=[{id:'hammer',name:'망치',detail:'톡톡, 한 방씩',Icon:Hammer},{id:'wave',name:'충격파',detail:'넓게 한 번에',Icon:Zap},{id:'laser',name:'레이저',detail:'정교하게 잘라내기',Icon:Crosshair},{id:'meteor',name:'운석',detail:'하늘에서 쾅!',Icon:Flame},{id:'quake',name:'지진',detail:'바닥부터 흔들기',Icon:Activity}];
   const hints:Record<string,string>={hammer:'건물을 톡톡! 누르고 있으면 연속으로 부서져요.',wave:'부술 곳을 톡! 넓은 범위를 한 번에.',laser:'꾹 누른 곳을 가늘고 깊게 잘라내요.',meteor:'원하는 곳을 누르면 하늘에서 운석이 떨어져요.',quake:'건물을 누르면 지반부터 크게 흔들려요.'};
   function reset(){engine.current?.reset();setShowFinish(true);}
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||(e.target as HTMLElement)?.closest('button,a,input,textarea'))return;if(e.key==='1')choose('hammer');if(e.key==='2')choose('wave');if(e.key==='3')choose('laser');if(e.key==='4')choose('meteor');if(e.key==='5')choose('quake');if(e.key.toLowerCase()==='u')engine.current?.undo();if(e.key.toLowerCase()==='r')reset();if(e.code==='Space'){e.preventDefault();engine.current?.centerHit();}if(e.key==='Escape')setHelp(false);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
-  async function lock(){if(staticMode){window.location.reload();return;}try{const r=await fetch('/api/lock',{method:'POST'});if(r.ok)window.location.replace('/');else setError('잠금에 실패했어요. 다시 시도해 주세요.');}catch{setError('연결을 확인한 뒤 다시 잠가 주세요.');}}
+  function lock(){window.location.reload();}
   return <main className="game-shell">
     <div ref={mount} className={`scene ${orbit?'is-orbit':''}`} aria-label="부산미남병원 3D 건물. 클릭하거나 터치하면 부서집니다." role="application" tabIndex={0}/>
-    <header className="game-header"><div className="brand-block"><a href={staticMode?'./':'/play'} className="wordmark">MINAM<span>BREAK</span><i/></a><span className="header-divider"/><span className="private-badge"><LockKeyhole size={11}/>우리만의 공간</span></div><div className="top-actions"><button className="icon-button" onClick={()=>{setSound(!sound);engine.current?.setSound(!sound);}} aria-label={sound?'소리 끄기':'소리 켜기'} title={sound?'소리 끄기':'소리 켜기'}>{sound?<Volume2 size={19}/>:<VolumeX size={19}/>}</button><button className="icon-button" onClick={()=>setHelp(true)} aria-label="조작 안내"><CircleHelp size={19}/></button><button className="lock-button" aria-label="잠그기" onClick={lock}><LockKeyhole size={15}/><span>잠그기</span></button></div></header>
+    <header className="game-header"><div className="brand-block"><a href="./" className="wordmark">MINAM<span>BREAK</span><i/></a><span className="header-divider"/><span className="private-badge"><LockKeyhole size={11}/>우리만의 공간</span></div><div className="top-actions"><button className="icon-button" onClick={()=>{setSound(!sound);engine.current?.setSound(!sound);}} aria-label={sound?'소리 끄기':'소리 켜기'} title={sound?'소리 끄기':'소리 켜기'}>{sound?<Volume2 size={19}/>:<VolumeX size={19}/>}</button><button className="icon-button" onClick={()=>setHelp(true)} aria-label="조작 안내"><CircleHelp size={19}/></button><button className="lock-button" aria-label="잠그기" onClick={lock}><LockKeyhole size={15}/><span>잠그기</span></button></div></header>
     <section className="scene-title"><span className="eyebrow">TODAY’S LITTLE ESCAPE</span><h1>오늘의 스트레스,<br/>시원하게 <span>부숴 봐.</span></h1><p>아무 생각 없이, 네 마음이 가벼워질 때까지.</p></section>
     <aside className="progress-card" aria-label="게임 진행 상황"><div className="progress-caption"><span>스트레스 해소</span><Heart size={14}/></div><div className="progress-number">{stats.percent}<small>%</small></div><div className="progress-track"><span style={{width:`${stats.percent}%`}}/></div><div className="progress-footer"><span>{stats.hits}번의 시원한 한 방</span><b>{stats.score.toLocaleString()} <small>PTS</small></b></div></aside>
     {stats.combo>=3&&<div className="combo" key={stats.combo}><span>아주 좋아!</span><strong>{stats.combo} <i>COMBO</i></strong></div>}

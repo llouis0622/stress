@@ -11,7 +11,7 @@ if (!password || !/^\d{4}$/.test(password)) throw new Error('Set GAME_PASSWORD t
 const output = path.join(root, 'docs');
 const bundle = await build({
   absWorkingDir: root,
-  entryPoints: ['static/entry.tsx'],
+  entryPoints: ['src/main.tsx'],
   bundle: true,
   minify: true,
   format: 'esm',
@@ -33,8 +33,8 @@ await mkdir(path.join(output, 'reference'), { recursive: true });
 await mkdir(path.join(output, 'vendor'), { recursive: true });
 await writeFile(path.join(output, 'game.enc'), Buffer.concat([Buffer.from('MB01'), salt, iv, encrypted]));
 await writeFile(path.join(output, 'styles.css'), css);
-await copyFile(path.join(root, 'static/index.html'), path.join(output, 'index.html'));
-await copyFile(path.join(root, 'static/unlock.js'), path.join(output, 'unlock.js'));
+await copyFile(path.join(root, 'src/index.html'), path.join(output, 'index.html'));
+await copyFile(path.join(root, 'src/unlock.js'), path.join(output, 'unlock.js'));
 for (const asset of ['reference/minam-facade.webp', 'vendor/THREE-LICENSE.txt', 'favicon.svg', 'robots.txt']) {
   await copyFile(path.join(root, 'public', asset), path.join(output, asset));
 }
